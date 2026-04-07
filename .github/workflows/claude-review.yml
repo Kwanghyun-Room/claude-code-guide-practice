@@ -1,0 +1,87 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr.diff
+          echo "diff_size=$(wc -c < pr.diff)" >> $GITHUB_OUTPUT
+
+      - name: Claude code review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          import anthropic
+          import subprocess
+
+          with open("pr.diff") as f:
+              diff = f.read()
+
+          if not diff.strip():
+              print("No diff found, skipping review.")
+              exit(0)
+
+          client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+          message = client.messages.create(
+              model="claude-opus-4-6",
+              max_tokens=2048,
+              messages=[
+                  {
+                      "role": "user",
+                      "content": f"""You are a code reviewer. Review the following PR diff and provide concise, actionable feedback.
+
+Focus on:
+- Bugs or logic errors
+- Type safety issues
+- Missing test coverage
+- Code quality and readability
+
+Format your response in GitHub Markdown. Be concise. If the code looks good, say so briefly.
+
+<diff>
+{diff[:8000]}
+</diff>""",
+                  }
+              ],
+          )
+
+          review = message.content[0].text
+          comment = f"## Claude Code Review\n\n{review}\n\n---\n*🤖 Automated review by [Claude](https://claude.ai)*"
+
+          repo = os.environ["REPO"]
+          pr_number = os.environ["PR_NUMBER"]
+          subprocess.run(
+              ["gh", "pr", "comment", pr_number, "--repo", repo, "--body", comment],
+              check=True,
+              env={**os.environ},
+          )
+          print("Review posted successfully.")
+          EOF
