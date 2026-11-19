@@ -130,9 +130,9 @@
   <div class="section">
     <h2>사이트 추가</h2>
     <form id="addForm" autocomplete="off">
-      <input id="addName" placeholder="이름 (예: 공지사항)">
+      <input id="addPath" placeholder="뒷경로 또는 전체 URL 붙여넣기" spellcheck="false">
       <div class="row">
-        <input id="addPath" placeholder="뒷경로 또는 전체 URL 붙여넣기" spellcheck="false">
+        <input id="addName" placeholder="이름 (예: 공지사항)">
         <button class="primary" type="submit">추가</button>
       </div>
       <div id="addHint" class="hint"></div>
@@ -186,11 +186,17 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   // ---------- URL 처리 ----------
+  // 메인 URL은 프로토콜+도메인(+포트)만 남기고 뒷부분은 버린다
   function normalizeBase(v) {
     v = v.trim();
     if (!v) return '';
     if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
-    return v.replace(/\/+$/, '');
+    try {
+      const u = new URL(v);
+      return u.hostname ? u.origin : '';
+    } catch (e) {
+      return '';
+    }
   }
   // 전체 URL이 들어오면 메인 URL(또는 도메인) 부분을 떼고 뒷경로만 남긴다
   function toPath(v) {
@@ -218,8 +224,9 @@
       : '메인 URL을 먼저 입력하세요.';
   }
   function saveBase() {
-    const v = normalizeBase($('baseInput').value);
-    if (v && !/^https?:\/\/[^\/\s]+/i.test(v)) { alert('올바른 URL이 아닙니다.'); return; }
+    const raw = $('baseInput').value;
+    const v = normalizeBase(raw);
+    if (raw.trim() && !v) { alert('올바른 URL이 아닙니다.'); return; }
     const changed = v !== state.baseUrl;
     state.baseUrl = v;
     save();
@@ -235,23 +242,87 @@
   $('baseInput').onkeydown = (e) => { if (e.key === 'Enter') saveBase(); };
 
   // ---------- 사이트 추가 ----------
+  // 이름 칸이 비어 있거나 자동으로 채운 값일 때만 자동 입력으로 덮어쓴다
+  let nameAuto = true;
+  let titleTimer = null, titleSeq = 0;
+
+  // 제목을 못 가져왔을 때 경로로 이름을 만든다 (/board/notice → board notice)
+  function nameFromPath(path, rawInput) {
+    let pathname = (path || '').split(/[?#]/)[0];
+    try { pathname = decodeURIComponent(pathname); } catch (e) {}
+    const words = pathname.split('/').map(w => w.replace(/\.[a-z0-9]+$/i, '').replace(/[-_+]+/g, ' ').trim()).filter(Boolean);
+    if (words.length) return words.join(' ');
+    try { return new URL(/^https?:\/\//i.test(rawInput) ? rawInput : state.baseUrl).hostname; } catch (e) { return ''; }
+  }
+
+  // 페이지 <title>을 직접 읽어본다. 대부분의 사이트는 브라우저 보안(CORS)으로 막혀 null을 반환한다.
+  async function fetchTitle(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      // EUC-KR 등 한글 인코딩 사이트 대응: 헤더 또는 <meta charset>에서 인코딩을 찾는다
+      let charset = (/charset=([\w-]+)/i.exec(res.headers.get('content-type') || '') || [])[1];
+      if (!charset) {
+        const head = new TextDecoder('ascii').decode(buf.slice(0, 4096));
+        charset = (/<meta[^>]+charset=["']?([\w-]+)/i.exec(head) || [])[1];
+      }
+      let text;
+      try { text = new TextDecoder(charset || 'utf-8').decode(buf); }
+      catch (e) { text = new TextDecoder('utf-8').decode(buf); }
+      const title = new DOMParser().parseFromString(text, 'text/html').title.trim();
+      return title || null;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function autoFillName() {
+    const raw = $('addPath').value.trim();
+    if (!nameAuto) return;
+    if (!raw) { $('addName').value = ''; return; }
+    const path = toPath(raw);
+    $('addName').value = nameFromPath(path, raw);
+    const url = /^https?:\/\//i.test(raw) ? raw : fullUrl(path);
+    if (!url) return;
+    const seq = ++titleSeq;
+    $('addName').placeholder = '제목 가져오는 중…';
+    fetchTitle(url).then(title => {
+      if (seq !== titleSeq) return;            // 그 사이 입력이 바뀌었으면 무시
+      $('addName').placeholder = '이름 (예: 공지사항)';
+      if (title && nameAuto) $('addName').value = title;
+    });
+  }
+
+  $('addName').addEventListener('input', () => {
+    nameAuto = $('addName').value.trim() === '';
+  });
   $('addPath').addEventListener('input', () => {
     const p = toPath($('addPath').value);
     $('addHint').textContent = $('addPath').value.trim()
       ? `저장될 경로: ${p || '(메인 URL 그대로)'}` : '';
+    clearTimeout(titleTimer);
+    titleTimer = setTimeout(autoFillName, 500);
   });
   $('addForm').onsubmit = (e) => {
     e.preventDefault();
-    const name = $('addName').value.trim();
+    clearTimeout(titleTimer); titleSeq++;
     const rawPath = $('addPath').value;
     const path = toPath(rawPath);
-    if (!name && !rawPath.trim()) { $('addName').focus(); return; }
-    state.sites.push({ id: uid(), name: name || path || '(이름 없음)', path });
+    const name = $('addName').value.trim() || nameFromPath(path, rawPath.trim());
+    if (!name && !rawPath.trim()) { $('addPath').focus(); return; }
+    state.sites.push({ id: uid(), name: name || '(이름 없음)', path });
     save();
     $('addName').value = ''; $('addPath').value = ''; $('addHint').textContent = '';
+    $('addName').placeholder = '이름 (예: 공지사항)';
+    nameAuto = true;
     renderList(); renderBase();
     $('listWrap').scrollTop = $('listWrap').scrollHeight;
-    $('addName').focus();
+    $('addPath').focus();
   };
 
   // ---------- 목록 ----------
