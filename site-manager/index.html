@@ -84,8 +84,32 @@
   .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
 
   #addForm { display: flex; flex-direction: column; gap: 6px; }
-  .footer { padding: 10px 14px; display: flex; gap: 6px; border-top: 1px solid var(--line); }
-  .footer button { flex: 1; font-size: 12px; }
+  .backup { display: flex; gap: 6px; }
+  .backup button { flex: 1; font-size: 12px; }
+
+  /* 입력 영역 접기/펼치기 */
+  #settingsToggle {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    padding: 10px 14px; text-align: left; background: var(--panel);
+  }
+  #settingsToggle .label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  #baseShort { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #caret { color: var(--muted); font-size: 14px; transition: transform .15s; }
+  body.settings-open #caret { transform: rotate(90deg); }
+  #settings { display: none; overflow-y: auto; max-height: 60%; flex: none; background: var(--bg); }
+  body.settings-open #settings { display: block; }
+  #settings .section { background: var(--panel); }
+
+  .list-head {
+    display: flex; align-items: center; gap: 6px; padding: 10px 8px 4px 14px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+  }
+  .list-head .grow { flex: 1; }
+
+  /* 왼쪽 메뉴 전체 접기 */
+  body.side-collapsed #side, body.side-collapsed #resizer { display: none; }
+  #sideToggle { font-size: 16px; line-height: 1; padding: 4px 8px; }
 
   /* ---------- 우측 뷰 ---------- */
   #view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -116,6 +140,13 @@
 <body>
 
 <aside id="side">
+  <button id="settingsToggle" type="button" title="메인 URL · 사이트 추가 · 백업 열기/닫기">
+    <span class="label">⚙ 메인 URL · 사이트 추가</span>
+    <span id="baseShort"></span>
+    <span id="caret">▸</span>
+  </button>
+
+  <div id="settings">
   <!-- 1. 메인 URL 관리 영역 -->
   <div class="section">
     <h2>메인 URL</h2>
@@ -139,22 +170,29 @@
     </form>
   </div>
 
-  <div class="section" style="border-bottom:0;padding-bottom:4px">
-    <h2>사이트 목록 <span id="count"></span></h2>
+  <div class="section">
+    <h2>백업</h2>
+    <div class="backup">
+      <button id="exportBtn" title="목록과 메인 URL을 JSON 파일로 저장">내보내기</button>
+      <button id="importBtn" title="JSON 파일에서 불러오기">가져오기</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </div>
+  </div>
+
+  <div class="list-head">
+    <span>사이트 목록</span>
+    <span id="count" class="grow"></span>
+    <button id="sideClose" class="icon" type="button" title="메뉴 접기">«</button>
   </div>
   <div id="listWrap"><ul id="list"></ul></div>
-
-  <div class="footer">
-    <button id="exportBtn" title="목록과 메인 URL을 JSON 파일로 저장">백업 내보내기</button>
-    <button id="importBtn" title="JSON 파일에서 불러오기">백업 가져오기</button>
-    <input id="importFile" type="file" accept="application/json,.json" hidden>
-  </div>
 </aside>
 <div id="resizer" title="드래그해서 폭 조절"></div>
 
 <!-- 3. 임베딩 뷰 영역 -->
 <main id="view">
   <div id="viewBar">
+    <button id="sideToggle" type="button" title="메뉴 접기/펼치기">☰</button>
     <span id="viewTitle">사이트 뷰</span>
     <span id="viewUrl"></span>
     <button id="reloadBtn" title="새로고침">⟳ 새로고침</button>
@@ -171,7 +209,7 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------- 상태 ----------
-  let state = { baseUrl: '', sites: [], activeId: null, sideWidth: 340 };
+  let state = { baseUrl: '', sites: [], activeId: null, sideWidth: 340, sideCollapsed: false, settingsOpen: false };
 
   function load() {
     try {
@@ -218,6 +256,7 @@
   // ---------- 메인 URL 영역 ----------
   function renderBase() {
     $('baseInput').value = state.baseUrl;
+    $('baseShort').textContent = state.baseUrl.replace(/^https?:\/\//i, '') || '(미설정)';
     $('baseHint').className = 'hint';
     $('baseHint').textContent = state.baseUrl
       ? `사이트 ${state.sites.length}개가 이 주소를 사용합니다.`
@@ -524,8 +563,24 @@
     });
   })();
 
+  // ---------- 접기/펼치기 ----------
+  function applyLayout() {
+    document.body.classList.toggle('side-collapsed', !!state.sideCollapsed);
+    document.body.classList.toggle('settings-open', !!state.settingsOpen);
+    $('sideToggle').title = state.sideCollapsed ? '메뉴 펼치기' : '메뉴 접기';
+  }
+  function toggleSide() { state.sideCollapsed = !state.sideCollapsed; save(); applyLayout(); }
+  $('sideToggle').onclick = toggleSide;
+  $('sideClose').onclick = toggleSide;
+  $('settingsToggle').onclick = () => {
+    state.settingsOpen = !state.settingsOpen; save(); applyLayout();
+    if (state.settingsOpen) $(state.baseUrl ? 'addPath' : 'baseInput').focus();
+  };
+
   // ---------- 시작 ----------
   load();
+  if (!state.baseUrl) { state.settingsOpen = true; state.sideCollapsed = false; }  // 처음 쓸 때는 입력 영역을 열어둔다
+  applyLayout();
   renderBase();
   renderList();
   if (state.activeId) openSite(state.activeId);
