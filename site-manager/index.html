@@ -195,6 +195,7 @@
     <button id="sideToggle" type="button" title="메뉴 접기/펼치기">☰</button>
     <span id="viewTitle">사이트 뷰</span>
     <span id="viewUrl"></span>
+    <button id="addFromView" title="지금 보이는 주소를 목록에 새 사이트로 추가" disabled>＋ 사이트로 추가</button>
     <button id="reloadBtn" title="새로고침">⟳ 새로고침</button>
   </div>
   <div id="frameWrap">
@@ -496,11 +497,13 @@
     $('placeholder').textContent = msg || '왼쪽 목록에서 사이트를 클릭하면 여기에 열립니다.';
     $('viewTitle').textContent = '사이트 뷰';
     $('viewUrl').textContent = '';
+    updateAddFromView();
   }
   function openSite(id) {
     const s = state.sites.find(x => x.id === id);
     if (!s) return;
     state.activeId = id; save();
+    updateAddFromView();
     document.querySelectorAll('#list li').forEach(el => el.classList.toggle('active', el.dataset.id === id));
     $('viewTitle').textContent = s.name;
     if (!state.baseUrl) {
@@ -514,6 +517,35 @@
     $('frame').src = url;
   }
   $('reloadBtn').onclick = () => { if (state.activeId) openSite(state.activeId); };
+
+  // 뷰에 열린 주소를 새 사이트로 복제해 현재 사이트 바로 아래에 넣는다
+  function updateAddFromView() {
+    $('addFromView').disabled = !state.sites.some(s => s.id === state.activeId);
+  }
+  $('addFromView').onclick = () => {
+    const idx = state.sites.findIndex(s => s.id === state.activeId);
+    if (idx < 0) return;
+    const path = state.sites[idx].path;
+    const fallback = nameFromPath(path, '') || state.sites[idx].name;
+    const item = { id: uid(), name: fallback, path };
+    state.sites.splice(idx + 1, 0, item);
+    editingId = item.id;                     // 바로 이름을 고칠 수 있게 수정 상태로 연다
+    if (state.sideCollapsed) { state.sideCollapsed = false; applyLayout(); }
+    save(); renderList(); renderBase();
+    const li = document.querySelector(`#list li[data-id="${item.id}"]`);
+    if (li) li.scrollIntoView({ block: 'nearest' });
+
+    // 제목을 읽을 수 있으면 자동 이름을 제목으로 바꾼다 (사용자가 이미 고쳤으면 그대로 둔다)
+    const url = fullUrl(path);
+    if (!url) return;
+    fetchTitle(url).then(title => {
+      if (!title || item.name !== fallback) return;
+      const input = editingId === item.id && document.querySelector(`#list li[data-id="${item.id}"] .e-name`);
+      if (input && input.value !== fallback) return;
+      item.name = title; save();
+      if (input) input.value = title; else renderList();
+    });
+  };
 
   // ---------- 백업 ----------
   $('exportBtn').onclick = () => {
