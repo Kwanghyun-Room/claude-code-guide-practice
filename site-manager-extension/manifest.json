@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "사이트 링크 관리",
+  "version": "1.0.0",
+  "description": "메인 URL을 한 곳에서 관리하고, 뷰에서 보고 있는 주소로 사이트를 바로 추가하거나 갱신합니다.",
+  "minimum_chrome_version": "116",
+  "permissions": ["webNavigation", "declarativeNetRequest"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "사이트 링크 관리 열기" }
+}

@@ -223,6 +223,7 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  load();
 
   // ---------- URL 처리 ----------
   // 메인 URL은 프로토콜+도메인(+포트)만 남기고 뒷부분은 버린다
@@ -242,7 +243,8 @@
     v = v.trim();
     if (!v) return '';
     const base = state.baseUrl;
-    if (base && v.toLowerCase().startsWith(base.toLowerCase())) {
+    // abc.com 이 abc.com.other.net 같은 다른 도메인과 겹치지 않게, 메인 URL 바로 뒤가 / ? # 이거나 끝일 때만 자른다
+    if (base && v.toLowerCase().startsWith(base.toLowerCase()) && /^([\/?#]|$)/.test(v.slice(base.length))) {
       v = v.slice(base.length);
     } else if (/^https?:\/\//i.test(v)) {
       try { const u = new URL(v); v = u.pathname + u.search + u.hash; } catch (e) {}
@@ -623,7 +625,6 @@
   };
 
   // ---------- 시작 ----------
-  load();
   if (!state.baseUrl) { state.settingsOpen = true; state.sideCollapsed = false; }  // 처음 쓸 때는 입력 영역을 열어둔다
   applyLayout();
   renderBase();

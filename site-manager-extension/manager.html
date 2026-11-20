@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사이트 링크 관리</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2129; --muted: #6b7280;
+    --line: #e3e5e9; --accent: #2563eb; --accent-soft: #e8efff; --danger: #dc2626;
+    --hover: #f1f3f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --panel: #1d2026; --text: #e6e8eb; --muted: #9aa1ab;
+      --line: #2e323a; --accent: #6b9bff; --accent-soft: #24304a; --danger: #f87171;
+      --hover: #262a31;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  button, input { font: inherit; color: inherit; }
+  button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--hover); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.icon { padding: 2px 6px; border: none; background: transparent; color: var(--muted); }
+  button.icon:hover { background: var(--hover); color: var(--text); }
+  button.icon.del:hover { color: var(--danger); }
+  button:disabled { opacity: .35; cursor: default; }
+  input {
+    width: 100%; border: 1px solid var(--line); background: var(--bg);
+    border-radius: 6px; padding: 6px 8px; min-width: 0;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  /* ---------- 좌측 패널 ---------- */
+  #side {
+    width: 340px; min-width: 240px; max-width: 70vw; flex: none;
+    background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #resizer { width: 5px; cursor: col-resize; flex: none; background: transparent; }
+  #resizer:hover, #resizer.active { background: var(--accent-soft); }
+  .section { padding: 14px; border-bottom: 1px solid var(--line); }
+  .section h2 {
+    margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .04em;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row > button { flex: none; white-space: nowrap; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 1em; }
+  .hint.ok { color: #16a34a; }
+
+  #listWrap { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 6px 8px; }
+  #list { list-style: none; margin: 0; padding: 0; }
+  #list li {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 6px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  #list li:hover { background: var(--hover); }
+  #list li.active { background: var(--accent-soft); border-color: var(--accent); }
+  #list li.dragging { opacity: .4; }
+  #list li.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  #list li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+  .handle { cursor: grab; color: var(--muted); padding: 0 4px; user-select: none; }
+  .num { color: var(--muted); font-size: 12px; width: 20px; text-align: right; flex: none; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .path { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: flex; flex: none; opacity: .55; }
+  #list li:hover .actions, #list li.active .actions { opacity: 1; }
+  .edit-box { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+
+  #addForm { display: flex; flex-direction: column; gap: 6px; }
+  .backup { display: flex; gap: 6px; }
+  .backup button { flex: 1; font-size: 12px; }
+
+  /* 입력 영역 접기/펼치기 */
+  #settingsToggle {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    padding: 10px 14px; text-align: left; background: var(--panel);
+  }
+  #settingsToggle .label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  #baseShort { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #caret { color: var(--muted); font-size: 14px; transition: transform .15s; }
+  body.settings-open #caret { transform: rotate(90deg); }
+  #settings { display: none; overflow-y: auto; max-height: 60%; flex: none; background: var(--bg); }
+  body.settings-open #settings { display: block; }
+  #settings .section { background: var(--panel); }
+
+  .list-head {
+    display: flex; align-items: center; gap: 6px; padding: 10px 8px 4px 14px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+  }
+  .list-head .grow { flex: 1; }
+
+  /* 왼쪽 메뉴 전체 접기 */
+  body.side-collapsed #side, body.side-collapsed #resizer { display: none; }
+  #sideToggle { font-size: 16px; line-height: 1; padding: 4px 8px; }
+
+  /* ---------- 우측 뷰 ---------- */
+  #view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #viewBar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  #viewTitle { font-weight: 600; white-space: nowrap; }
+  #viewUrl {
+    flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #viewBar button { white-space: nowrap; flex: none; }
+  #movedBadge {
+    display: none; flex: none; font-size: 11px; font-weight: 600; padding: 1px 6px;
+    border-radius: 4px; background: #f59e0b; color: #1d2129;
+  }
+  #viewBar.moved #movedBadge { display: inline-block; }
+  #viewBar.moved #viewUrl { color: var(--text); }
+  #viewMsg { flex: none; font-size: 12px; color: #16a34a; white-space: nowrap; }
+  #viewMsg:empty { display: none; }
+  #extNotice {
+    padding: 8px 12px; font-size: 12px; background: #fef3c7; color: #78350f;
+    border-bottom: 1px solid var(--line);
+  }
+  #frameWrap { flex: 1; position: relative; background: #fff; }
+  #frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  #placeholder {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); background: var(--bg); text-align: center; padding: 16px;
+  }
+
+  @media (max-width: 720px) {
+    body { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
+    #side { width: 100% !important; max-width: none; border-right: 0; border-bottom: 1px solid var(--line); max-height: 55vh; }
+    #resizer { display: none; }
+    #view { height: 70vh; }
+  }
+</style>
+</head>
+<body>
+
+<aside id="side">
+  <button id="settingsToggle" type="button" title="메인 URL · 사이트 추가 · 백업 열기/닫기">
+    <span class="label">⚙ 메인 URL · 사이트 추가</span>
+    <span id="baseShort"></span>
+    <span id="caret">▸</span>
+  </button>
+
+  <div id="settings">
+  <!-- 1. 메인 URL 관리 영역 -->
+  <div class="section">
+    <h2>메인 URL</h2>
+    <div class="row">
+      <input id="baseInput" placeholder="https://example.com" spellcheck="false">
+      <button id="baseSave" class="primary">저장</button>
+    </div>
+    <div id="baseHint" class="hint"></div>
+  </div>
+
+  <!-- 2. 사이트 목록 관리 영역 -->
+  <div class="section">
+    <h2>사이트 추가</h2>
+    <form id="addForm" autocomplete="off">
+      <input id="addPath" placeholder="뒷경로 또는 전체 URL 붙여넣기" spellcheck="false">
+      <div class="row">
+        <input id="addName" placeholder="이름 (예: 공지사항)">
+        <button class="primary" type="submit">추가</button>
+      </div>
+      <div id="addHint" class="hint"></div>
+    </form>
+  </div>
+
+  <div class="section">
+    <h2>백업</h2>
+    <div class="backup">
+      <button id="exportBtn" title="목록과 메인 URL을 JSON 파일로 저장">내보내기</button>
+      <button id="importBtn" title="JSON 파일에서 불러오기">가져오기</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </div>
+  </div>
+
+  <div class="list-head">
+    <span>사이트 목록</span>
+    <span id="count" class="grow"></span>
+    <button id="sideClose" class="icon" type="button" title="메뉴 접기">«</button>
+  </div>
+  <div id="listWrap"><ul id="list"></ul></div>
+</aside>
+<div id="resizer" title="드래그해서 폭 조절"></div>
+
+<!-- 3. 임베딩 뷰 영역 -->
+<main id="view">
+  <div id="viewBar">
+    <button id="sideToggle" type="button" title="메뉴 접기/펼치기">☰</button>
+    <span id="viewTitle">사이트 뷰</span>
+    <span id="movedBadge" title="선택한 사이트에 저장된 주소와 다른 페이지를 보고 있습니다">이동됨</span>
+    <span id="viewUrl"></span>
+    <span id="viewMsg"></span>
+    <button id="updateFromView" title="선택한 사이트의 주소를 지금 보이는 주소로 바꿉니다" disabled>↻ 현재 사이트 갱신</button>
+    <button id="addFromView" title="지금 보이는 주소를 선택한 사이트 아래에 새 항목으로 추가" disabled>＋ 새 사이트로 추가</button>
+    <button id="reloadBtn" title="선택한 사이트를 저장된 주소로 다시 열기">⟳ 새로고침</button>
+  </div>
+  <div id="extNotice" hidden>
+    확장 프로그램으로 설치해서 열어야 뷰 주소 감지와 임베딩 차단 해제가 동작합니다. 설치 방법은 같은 폴더의 README.md를 보세요.
+  </div>
+  <div id="frameWrap">
+    <!-- sandbox: 사이트가 관리 화면 전체를 자기 페이지로 바꿔치기(top 이동)하지 못하게 막는다 -->
+    <iframe id="frame" title="사이트 뷰" referrerpolicy="no-referrer-when-downgrade"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"></iframe>
+    <div id="placeholder">왼쪽 목록에서 사이트를 클릭하면 여기에 열립니다.</div>
+  </div>
+</main>
+
+<script src="manager.js"></script>
+</body>
+</html>
