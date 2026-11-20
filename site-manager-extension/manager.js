@@ -12,42 +12,18 @@
     } catch (e) { /* 저장소 사용 불가 시 빈 상태로 시작 */ }
     if (!Array.isArray(state.sites)) state.sites = [];
   }
-  function save() {
+  // 목록·메인 URL이 바뀌면 동기화도 요청한다 (화면 설정만 바뀔 때는 local=true)
+  function save(local) {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+    if (!local && sync) sync.changed();
   }
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const C = window.SiteCommon;
+  const uid = C.uid;
+  const normalizeBase = C.normalizeBase;
+  const toPath = (v) => C.toPath(v, state.baseUrl);
+  const fullUrl = (path) => C.fullUrl(state.baseUrl, path);
+  let sync = null;
   load();
-
-  // ---------- URL 처리 ----------
-  // 메인 URL은 프로토콜+도메인(+포트)만 남기고 뒷부분은 버린다
-  function normalizeBase(v) {
-    v = v.trim();
-    if (!v) return '';
-    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
-    try {
-      const u = new URL(v);
-      return u.hostname ? u.origin : '';
-    } catch (e) {
-      return '';
-    }
-  }
-  // 전체 URL이 들어오면 메인 URL(또는 도메인) 부분을 떼고 뒷경로만 남긴다
-  function toPath(v) {
-    v = v.trim();
-    if (!v) return '';
-    const base = state.baseUrl;
-    // abc.com 이 abc.com.other.net 같은 다른 도메인과 겹치지 않게, 메인 URL 바로 뒤가 / ? # 이거나 끝일 때만 자른다
-    if (base && v.toLowerCase().startsWith(base.toLowerCase()) && /^([\/?#]|$)/.test(v.slice(base.length))) {
-      v = v.slice(base.length);
-    } else if (/^https?:\/\//i.test(v)) {
-      try { const u = new URL(v); v = u.pathname + u.search + u.hash; } catch (e) {}
-    }
-    if (v && !/^[\/?#]/.test(v)) v = '/' + v;
-    return v === '/' ? '' : v;
-  }
-  function fullUrl(path) {
-    return state.baseUrl ? state.baseUrl + (path || '') : '';
-  }
 
   // ---------- 메인 URL 영역 ----------
   function renderBase() {
@@ -82,13 +58,7 @@
   let titleTimer = null, titleSeq = 0;
 
   // 제목을 못 가져왔을 때 경로로 이름을 만든다 (/board/notice → board notice)
-  function nameFromPath(path, rawInput) {
-    let pathname = (path || '').split(/[?#]/)[0];
-    try { pathname = decodeURIComponent(pathname); } catch (e) {}
-    const words = pathname.split('/').map(w => w.replace(/\.[a-z0-9]+$/i, '').replace(/[-_+]+/g, ' ').trim()).filter(Boolean);
-    if (words.length) return words.join(' ');
-    try { return new URL(/^https?:\/\//i.test(rawInput) ? rawInput : state.baseUrl).hostname; } catch (e) { return ''; }
-  }
+  const nameFromPath = (path, rawInput) => C.nameFromPath(path, rawInput, state.baseUrl);
 
   // 페이지 <title>을 읽는다. 확장 프로그램은 사이트 접근 권한이 있어 CORS 제약 없이 읽을 수 있다.
   async function fetchTitle(url) {
@@ -337,7 +307,7 @@
   function openSite(id) {
     const s = state.sites.find(x => x.id === id);
     if (!s) return;
-    state.activeId = id; save();
+    state.activeId = id; save(true);
     document.querySelectorAll('#list li').forEach(el => el.classList.toggle('active', el.dataset.id === id));
     if (!state.baseUrl) {
       showPlaceholder('메인 URL이 설정되지 않았습니다. 왼쪽 위에서 먼저 입력하세요.');
@@ -480,7 +450,7 @@
       const onUp = () => {
         rz.classList.remove('active');
         $('frame').style.pointerEvents = '';
-        state.sideWidth = side.getBoundingClientRect().width; save();
+        state.sideWidth = side.getBoundingClientRect().width; save(true);
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
@@ -496,12 +466,63 @@
     $('sideToggle').title = state.sideCollapsed ? '메뉴 펼치기' : '메뉴 접기';
     fitListHeight();
   }
-  function toggleSide() { state.sideCollapsed = !state.sideCollapsed; save(); applyLayout(); }
+  function toggleSide() { state.sideCollapsed = !state.sideCollapsed; save(true); applyLayout(); }
   $('sideToggle').onclick = toggleSide;
   $('sideClose').onclick = toggleSide;
   $('settingsToggle').onclick = () => {
-    state.settingsOpen = !state.settingsOpen; save(); applyLayout();
+    state.settingsOpen = !state.settingsOpen; save(true); applyLayout();
     if (state.settingsOpen) $(state.baseUrl ? 'addPath' : 'baseInput').focus();
+  };
+
+  // ---------- 동기화 ----------
+  sync = C.createSync({
+    getData: () => ({ baseUrl: state.baseUrl, sites: state.sites }),
+    applyData: (d) => {
+      state.baseUrl = d.baseUrl;
+      state.sites = d.sites;
+      if (!activeSite()) state.activeId = null;
+      editingId = null;
+      save(true); renderBase(); renderList();
+      const s = activeSite();
+      if (s) $('viewTitle').textContent = s.name;
+      setViewUrl(viewUrl);
+    },
+    onStatus: (st, msg) => {
+      $('syncStatus').className = 'hint ' + st;
+      $('syncStatus').textContent = msg;
+      $('syncDot').className = 'sync-dot ' + st;
+      $('syncDot').title = msg;
+      if (st === 'conflict') alert(msg);
+    },
+  });
+
+  function fillSyncForm() {
+    const c = sync.config();
+    $('syncRepo').value = c ? c.repo : '';
+    $('syncPath').value = c ? c.path : '';
+    $('syncToken').value = '';
+    $('syncToken').placeholder = c && c.hasToken ? '토큰 저장됨 (바꿀 때만 입력)' : 'GitHub 토큰';
+    $('syncOff').disabled = !c;
+  }
+  $('syncOn').onclick = async () => {
+    const repo = $('syncRepo').value.trim()
+      .replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { alert('저장소는 "소유자/저장소" 형식으로 입력하세요. 예: myname/site-links'); return; }
+    const path = $('syncPath').value.trim().replace(/^\/+/, '') || 'sites.json';
+    const token = $('syncToken').value.trim();
+    $('syncOn').disabled = true;
+    try {
+      await sync.connect({ repo, path, token }, C.chooseSource);
+      fillSyncForm();
+    } catch (e) {
+      alert('연결 실패: ' + e.message);
+    } finally {
+      $('syncOn').disabled = false;
+    }
+  };
+  $('syncOff').onclick = () => {
+    if (!confirm('이 기기의 동기화를 끕니다. 저장된 토큰은 이 기기에서 지워지고, 목록은 이 기기에 그대로 남습니다.')) return;
+    sync.disconnect(); fillSyncForm();
   };
 
   // ---------- 시작 ----------
@@ -510,6 +531,8 @@
   renderBase();
   renderList();
   setViewUrl('');
+  fillSyncForm();
+  sync.start();
 
   (async () => {
     if (ext) {

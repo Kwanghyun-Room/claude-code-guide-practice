@@ -84,6 +84,19 @@
   .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
 
   #addForm { display: flex; flex-direction: column; gap: 6px; }
+  .sync-form { display: flex; flex-direction: column; gap: 6px; }
+  .sync-form .row button { flex: 1; }
+  #syncStatus.error, #syncStatus.conflict { color: var(--danger); }
+  #syncStatus.ok { color: #16a34a; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line); }
+  .sync-dot.ok { background: #16a34a; }
+  .sync-dot.syncing { background: #f59e0b; }
+  .sync-dot.error, .sync-dot.conflict { background: var(--danger); }
+  dialog.choice-dialog {
+    border: 1px solid var(--line); border-radius: 10px; padding: 18px;
+    background: var(--panel); color: var(--text); max-width: 420px;
+  }
+  dialog.choice-dialog::backdrop { background: rgba(0,0,0,.35); }
   .backup { display: flex; gap: 6px; }
   .backup button { flex: 1; font-size: 12px; }
 
@@ -184,6 +197,20 @@
   </div>
 
   <div class="section">
+    <h2>동기화 (GitHub 비공개 저장소)</h2>
+    <div class="sync-form">
+      <input id="syncRepo" placeholder="소유자/저장소 (예: myname/site-links)" spellcheck="false" autocomplete="off">
+      <input id="syncPath" placeholder="파일 경로 (기본 sites.json)" spellcheck="false" autocomplete="off">
+      <input id="syncToken" type="password" placeholder="GitHub 토큰" autocomplete="off">
+      <div class="row">
+        <button id="syncOn" class="primary" type="button">연결</button>
+        <button id="syncOff" type="button">동기화 끄기</button>
+      </div>
+    </div>
+    <div id="syncStatus" class="hint"></div>
+  </div>
+
+  <div class="section">
     <h2>백업</h2>
     <div class="backup">
       <button id="exportBtn" title="목록과 메인 URL을 JSON 파일로 저장">내보내기</button>
@@ -194,6 +221,7 @@
   </div>
 
   <div class="list-head">
+    <span id="syncDot" class="sync-dot off" title="동기화 꺼짐"></span>
     <span>사이트 목록</span>
     <span id="count" class="grow"></span>
     <button id="sideClose" class="icon" type="button" title="메뉴 접기">«</button>
@@ -225,6 +253,7 @@
   </div>
 </main>
 
+<script src="common.js"></script>
 <script src="manager.js"></script>
 </body>
 </html>
