@@ -1,0 +1,42 @@
+# 휴대폰 웹앱(site-manager-mobile)을 GitHub Pages에 배포한다.
+# 공통 코드(common.js)는 확장 프로그램 폴더에 하나만 두고, 배포할 때 복사해 넣는다.
+name: Deploy mobile web app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site-manager-mobile/**'
+      - 'site-manager-extension/common.js'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir _site
+          cp -r site-manager-mobile/. _site/
+          cp site-manager-extension/common.js _site/
+          rm -f _site/README.md
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

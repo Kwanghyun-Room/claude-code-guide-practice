@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "사이트 링크 관리",
+  "version": "1.1.0",
+  "description": "메인 URL을 한 곳에서 관리하고, 뷰에서 보고 있는 주소로 사이트를 바로 추가하거나 갱신합니다. GitHub로 휴대폰과 목록을 공유합니다.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "webNavigation",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "사이트 링크 관리 열기",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}

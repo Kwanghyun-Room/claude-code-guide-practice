@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<title>사이트 링크 관리</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2129; --muted: #6b7280;
+    --line: #e3e5e9; --accent: #2563eb; --accent-soft: #e8efff; --danger: #dc2626; --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --panel: #1d2026; --text: #e6e8eb; --muted: #9aa1ab;
+      --line: #2e323a; --accent: #6b9bff; --accent-soft: #24304a; --danger: #f87171; --ok: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+    padding: 10px 14px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .4; }
+  input, select {
+    width: 100%; border: 1px solid var(--line); background: var(--bg);
+    border-radius: 8px; padding: 10px 12px; min-width: 0;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--panel);
+    border-bottom: 1px solid var(--line); padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  .top { display: flex; align-items: center; gap: 8px; }
+  .top h1 { font-size: 18px; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+  .top button { padding: 6px 12px; font-size: 14px; }
+  #editToggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .base {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    font-size: 14px; color: var(--muted);
+  }
+  #baseText { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .base button { padding: 4px 10px; font-size: 13px; }
+
+  .sync-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
+  .sync-dot.ok { background: var(--ok); }
+  .sync-dot.syncing { background: #f59e0b; }
+  .sync-dot.error, .sync-dot.conflict { background: var(--danger); }
+  #syncBanner {
+    display: none; margin: 10px 16px 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+    background: #fee2e2; color: #7f1d1d;
+  }
+  #syncBanner.show { display: block; }
+
+  #list { list-style: none; margin: 8px 0 0; padding: 0 16px; }
+  #list li {
+    display: flex; align-items: center; gap: 4px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px;
+  }
+  #list a {
+    flex: 1; min-width: 0; padding: 12px 14px; color: inherit; text-decoration: none;
+  }
+  #list a:active { background: var(--accent-soft); border-radius: 10px; }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .path { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctrl { display: none; flex: none; padding-right: 6px; }
+  body.editing .ctrl { display: flex; }
+  .ctrl button { border: 0; background: transparent; padding: 10px 8px; color: var(--muted); font-size: 15px; }
+  .ctrl button.del { color: var(--danger); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+
+  #fab {
+    position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom));
+    width: 58px; height: 58px; border-radius: 50%; padding: 0;
+    background: var(--accent); border: 0; color: #fff; font-size: 30px; line-height: 1;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+
+  dialog {
+    border: 0; border-radius: 14px; padding: 18px; width: min(92vw, 440px);
+    background: var(--panel); color: var(--text);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog h2 { margin: 0 0 4px; font-size: 17px; }
+  .dlg-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .dlg-actions button { flex: 1; }
+  .stack { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .url-box {
+    font-size: 13px; background: var(--bg); border-radius: 8px; padding: 8px 10px;
+    word-break: break-all; margin-top: 8px;
+  }
+  .sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0 4px; }
+  #syncStatus.error, #syncStatus.conflict { color: var(--danger); }
+  #syncStatus.ok { color: var(--ok); }
+  dialog.choice-dialog button { width: 100%; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <h1><span id="syncDot" class="sync-dot off" title="동기화 꺼짐"></span>사이트 링크</h1>
+    <button id="editToggle" type="button">편집</button>
+    <button id="settingsBtn" type="button" aria-label="설정">⚙</button>
+  </div>
+  <div class="base">
+    <span>메인 URL</span>
+    <span id="baseText"></span>
+    <button id="baseBtn" type="button">변경</button>
+  </div>
+</header>
+
+<div id="syncBanner"></div>
+<ul id="list"></ul>
+
+<button id="fab" type="button" aria-label="사이트 추가">＋</button>
+
+<!-- 메인 URL 변경 -->
+<dialog id="baseDialog">
+  <form method="dialog" id="baseForm">
+    <h2>메인 URL</h2>
+    <p class="muted">바꾸면 모든 사이트 주소에 한꺼번에 적용됩니다. 도메인 뒤의 경로는 저장하지 않습니다.</p>
+    <input id="baseInput" inputmode="url" placeholder="https://example.com" spellcheck="false" autocomplete="off">
+    <div class="dlg-actions">
+      <button value="cancel" formnovalidate>취소</button>
+      <button value="ok" class="primary">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 사이트 추가 / 수정 -->
+<dialog id="siteDialog">
+  <form method="dialog" id="siteForm">
+    <h2 id="siteDialogTitle">사이트 추가</h2>
+    <label for="sitePath">주소 (뒷경로 또는 전체 URL)</label>
+    <input id="sitePath" inputmode="url" placeholder="/board/notice" spellcheck="false" autocomplete="off">
+    <div id="sitePathHint" class="muted"></div>
+    <label for="siteName">이름</label>
+    <input id="siteName" placeholder="비워 두면 경로로 자동 생성" autocomplete="off">
+    <div class="dlg-actions">
+      <button value="cancel" formnovalidate>취소</button>
+      <button value="ok" class="primary">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 다른 앱에서 '공유'로 들어온 주소 -->
+<dialog id="shareDialog">
+  <h2>공유받은 주소</h2>
+  <div id="shareUrl" class="url-box"></div>
+  <label for="shareName">이름</label>
+  <input id="shareName" autocomplete="off">
+  <div class="stack">
+    <button id="shareAdd" class="primary" type="button">＋ 새 사이트로 추가</button>
+  </div>
+  <hr class="sep">
+  <label for="shareTarget">또는 기존 사이트의 주소를 이 주소로 갱신</label>
+  <select id="shareTarget"></select>
+  <div class="stack">
+    <button id="shareUpdate" type="button">↻ 선택한 사이트 갱신</button>
+    <button id="shareClose" type="button">닫기</button>
+  </div>
+</dialog>
+
+<!-- 설정: 동기화 + 백업 -->
+<dialog id="settingsDialog">
+  <h2>동기화 (GitHub 비공개 저장소)</h2>
+  <p class="muted">PC 확장 프로그램과 같은 저장소·파일·토큰 정보를 입력하면 목록과 메인 URL을 함께 씁니다.</p>
+  <label for="syncRepo">저장소</label>
+  <input id="syncRepo" placeholder="소유자/저장소 (예: myname/site-links)" spellcheck="false" autocomplete="off" autocapitalize="off">
+  <label for="syncPath">파일 경로</label>
+  <input id="syncPath" placeholder="sites.json" spellcheck="false" autocomplete="off" autocapitalize="off">
+  <label for="syncToken">토큰</label>
+  <input id="syncToken" type="password" placeholder="GitHub 토큰" autocomplete="off">
+  <div class="dlg-actions">
+    <button id="syncOn" class="primary" type="button">연결</button>
+    <button id="syncOff" type="button">동기화 끄기</button>
+  </div>
+  <p id="syncStatus" class="muted"></p>
+  <hr class="sep">
+  <h2>백업</h2>
+  <div class="dlg-actions">
+    <button id="exportBtn" type="button">내보내기</button>
+    <button id="importBtn" type="button">가져오기</button>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+  </div>
+  <div class="dlg-actions">
+    <button id="settingsClose" type="button">닫기</button>
+  </div>
+</dialog>
+
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
